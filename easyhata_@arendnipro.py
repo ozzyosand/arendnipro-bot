@@ -17,11 +17,21 @@ def home():
     logging.info("Received request to / endpoint")
     return "I'm alive"
 
-# Эндпоинт для вебхуков Telegram
+# Эндпоинт для вебхуков Telegram с отладкой
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    logging.info("Received request to /webhook endpoint")
     try:
-        update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
+        # Читаем данные из запроса
+        update_data = request.stream.read().decode('utf-8')
+        logging.info(f"Raw update data: {update_data}")
+        # Декодируем обновление
+        update = telebot.types.Update.de_json(update_data)
+        if update is None:
+            logging.error("Failed to decode update: update is None")
+            return 'Error', 500
+        logging.info(f"Decoded update: {update}")
+        # Обрабатываем обновление
         bot.process_new_updates([update])
         return 'OK', 200
     except Exception as e:

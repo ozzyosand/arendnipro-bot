@@ -55,6 +55,7 @@ def webhook():
                 if not isinstance(data, dict) or "error" in data:
                     error_message = data.get("error", "Неизвестная ошибка при запросе к API") if isinstance(data, dict) else "Некорректный ответ от API"
                     bot.send_message(chat_id=update.message.chat.id, text=f"Ошибка при запросе к API: {error_message}")
+                    logging.error(f"API error: {error_message}")
                     return 'OK', 200
 
                 description = clean_and_format_description(data.get("text", "Описание отсутствует"))
@@ -110,8 +111,10 @@ def webhook():
                         media[0].caption = post_text[:1024] if len(post_text) > 1024 else post_text
                         media[0].parse_mode = 'HTML'
                         bot.send_media_group(chat_id="@arendnipro", media=media)
+                        logging.info("Media group sent successfully to @arendnipro")
                     else:
                         bot.send_message(chat_id="@arendnipro", text=post_text[:1024], parse_mode='HTML')
+                        logging.info("Text message sent successfully to @arendnipro")
                 except Exception as e:
                     logging.error(f"Error sending to channel: {str(e)}")
                     bot.send_message(chat_id=update.message.chat.id, text=f"Ошибка при отправке в канал: {str(e)}")
@@ -119,8 +122,10 @@ def webhook():
 
                 # Отправляем подтверждение пользователю
                 bot.send_message(chat_id=update.message.chat.id, text="Объявление опубликовано в канале!")
+                logging.info("Confirmation sent to user")
             else:
                 bot.send_message(chat_id=update.message.chat.id, text="Пожалуйста, отправьте ссылку на объявление с easyhata.site (flats или houses)")
+                logging.info("Invalid message type response sent")
         return 'OK', 200
     except Exception as e:
         logging.error(f"Webhook error: {str(e)}")
@@ -153,7 +158,7 @@ def trim_description(description, max_length):
     if last_period != -1:
         return description[:last_period + 1]
     else:
-        return description[:max_length].strip() + '.'
+        return description[:max_length].strip() + '...'
 
 # Функция для извлечения данных из API с отладочным выводом
 def get_data_from_api(url):

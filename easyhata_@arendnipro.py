@@ -2,20 +2,31 @@ import requests
 from bs4 import BeautifulSoup
 import telebot
 import os
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 import logging
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Настройка Flask для предотвращения засыпания
+# Настройка Flask
 app = Flask('')
 
 @app.route('/')
 def home():
     logging.info("Received request to / endpoint")
     return "I'm alive"
+
+# Эндпоинт для вебхуков Telegram
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
+        bot.process_new_updates([update])
+        return 'OK', 200
+    except Exception as e:
+        logging.error(f"Webhook error: {str(e)}")
+        return 'Error', 500
 
 def run():
     port = int(os.getenv("PORT", 8080))  # Динамический порт
@@ -28,7 +39,7 @@ def keep_alive():
 # Настройка Telegram-бота
 bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
 
-# Удаляем вебхук перед запуском polling
+# Удаляем вебхук перед запуском (на случай, если он был установлен ранее)
 bot.delete_webhook()
 
 # Функция для очистки и форматирования текста с сохранением структуры абзацев
@@ -89,15 +100,24 @@ def handle_message(message):
         logging.info(f"Extracted rieltor_id: {rieltor_id}, realty_type: {realty_type}, realty_id: {realty_id}, API URL: {api_url}")
 
         data = get_data_from_api(api_url)
-        if "error" in data:
-            bot.reply_to(message, f"Ошибка при запросе к API: {data['error']}")
+        # Проверяем, что data — это словарь и не содержит ошибку
+        if not isinstance(data, dict) or "error" in data:
+            error_message = data.get("error", "Неизвестная ошибка при запросе к API") if isinstance(data, dict) else "Некорректный ответ от API"
+            bot.reply_to(message, f"Ошибка при запросе к API: {error_message}")
             return
 
         description = clean_and_format_description(data.get("text", "Описание отсутствует"))
         logging.info(f"Formatted description: {description}")
         logging.info(f"Description length: {len(description)}")
-        city = data.get("city", {}).get("name", "Город не найден")
-        street = data.get("street", {}).get("name", "Улица не найдена")
+
+        # Проверяем, что ключ "street" существует и является словарем
+        street_data = data.get("street")
+        street = street_data.get("name", "Улица не найдена") if isinstance(street_data, dict) else "Улица не найдена"
+
+        # Аналогично проверяем "city"
+        city_data = data.get("city")
+        city = city_data.get("name", "Город не найден") if isinstance(city_data, dict) else "Город не найден"
+
         house_number = data.get("house_number", "") or ""
         address = f"{city}, вул. {street} {house_number}".strip()
         area = str(data.get("square_common", "Площадь не найдена"))
@@ -148,6 +168,7 @@ def handle_message(message):
     else:
         bot.reply_to(message, "Пожалуйста, отправьте ссылку на объявление с easyhata.site (flats или houses)")
 
-# Запускаем Flask-сервер и бота
-keep_alive()
-bot.infinity_polling(none_stop=True)
+# Запускаем Flask-сервер
+if __name__ == "__main__":
+    keep_alive()
+    logging.info("Bot is running with webhook mode")

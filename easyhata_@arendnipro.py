@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Настройка Flask
 app = Flask(__name__)
 
-# Инициализация бота (глобально, но будем переопределять обработчики внутри webhook)
+# Инициализация бота
 bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
 
 @app.route('/')
@@ -34,12 +34,14 @@ def webhook():
             return 'Error', 500
         logging.info(f"Decoded update: {update}")
 
-        # Переопределяем обработчик внутри функции
-        @bot.message_handler(content_types=['text'])
-        def handle_message(message):
-            logging.info("handle_message triggered")
-            if message.text.startswith("https://easyhata.site/flats/") or message.text.startswith("https://easyhata.site/houses/"):
-                parts = message.text.split('/')
+        # Временная ручная обработка: извлекаем текст сообщения
+        if update.message and update.message.text:
+            message_text = update.message.text
+            logging.info(f"Message text: {message_text}")
+            
+            # Проверяем, что это нужная ссылка
+            if message_text.startswith("https://easyhata.site/flats/") or message_text.startswith("https://easyhata.site/houses/"):
+                parts = message_text.split('/')
                 logging.info(f"URL parts: {parts}")
                 realty_type = parts[3]
                 realty_id = parts[4]
@@ -52,8 +54,8 @@ def webhook():
                 # Проверяем, что data — это словарь и не содержит ошибку
                 if not isinstance(data, dict) or "error" in data:
                     error_message = data.get("error", "Неизвестная ошибка при запросе к API") if isinstance(data, dict) else "Некорректный ответ от API"
-                    bot.reply_to(message, f"Ошибка при запросе к API: {error_message}")
-                    return
+                    bot.send_message(chat_id=update.message.chat.id, text=f"Ошибка при запросе к API: {error_message}")
+                    return 'OK', 200
 
                 description = clean_and_format_description(data.get("text", "Описание отсутствует"))
                 logging.info(f"Formatted description: {description}")
@@ -101,24 +103,24 @@ def webhook():
                 logging.info(f"Post text: {post_text}")
                 logging.info(f"Post text length: {len(post_text)}")
 
-                if images:
-                    try:
+                # Пробуем отправить сообщение в канал
+                try:
+                    if images:
                         media = [telebot.types.InputMediaPhoto(requests.get(img).content) for img in images]
                         media[0].caption = post_text[:1024] if len(post_text) > 1024 else post_text
                         media[0].parse_mode = 'HTML'
                         bot.send_media_group(chat_id="@arendnipro", media=media)
-                    except Exception as e:
-                        logging.error(f"Error sending media group: {str(e)}")
-                        bot.send_message(chat_id="@arendnipro", text="Ошибка при отправке фото. " + post_text[:1024], parse_mode='HTML')
-                else:
-                    bot.send_message(chat_id="@arendnipro", text=post_text[:1024], parse_mode='HTML')
+                    else:
+                        bot.send_message(chat_id="@arendnipro", text=post_text[:1024], parse_mode='HTML')
+                except Exception as e:
+                    logging.error(f"Error sending to channel: {str(e)}")
+                    bot.send_message(chat_id=update.message.chat.id, text=f"Ошибка при отправке в канал: {str(e)}")
+                    return 'OK', 200
 
-                bot.reply_to(message, "Объявление опубликовано в канале!")
+                # Отправляем подтверждение пользователю
+                bot.send_message(chat_id=update.message.chat.id, text="Объявление опубликовано в канале!")
             else:
-                bot.reply_to(message, "Пожалуйста, отправьте ссылку на объявление с easyhata.site (flats или houses)")
-
-        # Обрабатываем обновление
-        bot.process_new_updates([update])
+                bot.send_message(chat_id=update.message.chat.id, text="Пожалуйста, отправьте ссылку на объявление с easyhata.site (flats или houses)")
         return 'OK', 200
     except Exception as e:
         logging.error(f"Webhook error: {str(e)}")

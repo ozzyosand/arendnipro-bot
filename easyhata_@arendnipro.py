@@ -3,14 +3,16 @@ from bs4 import BeautifulSoup
 import telebot
 import os
 from flask import Flask, request
-from threading import Thread
 import logging
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Настройка Flask
-app = Flask('')
+app = Flask(__name__)
+
+# Инициализация бота
+bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
 
 @app.route('/')
 def home():
@@ -37,21 +39,6 @@ def webhook():
     except Exception as e:
         logging.error(f"Webhook error: {str(e)}")
         return 'Error', 500
-
-def run():
-    port = int(os.getenv("PORT", 8080))  # Динамический порт от Render или 8080 по умолчанию
-    logging.info(f"Starting server on port: {port}")
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-# Настройка Telegram-бота
-bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
-
-# Временно закомментируем удаление вебхука, чтобы избежать сброса
-# bot.delete_webhook()
 
 # Функция для очистки и форматирования текста с сохранением структуры абзацев
 def clean_and_format_description(text):
@@ -100,6 +87,7 @@ def get_data_from_api(url):
 # Обработка входящих сообщений
 @bot.message_handler(content_types=['text'])
 def handle_message(message):
+    logging.info("handle_message triggered")
     if message.text.startswith("https://easyhata.site/flats/") or message.text.startswith("https://easyhata.site/houses/"):
         parts = message.text.split('/')
         logging.info(f"URL parts: {parts}")
@@ -142,7 +130,7 @@ def handle_message(message):
         images = [img["img_obj"] for img in data.get("images", [])[:10]]
 
         max_description_length = 780
-        description = trim_description(description, max_description_length)
+        description = trim_description(description, max_length)
 
         if realty_type == "houses":
             floor_text = f"Этаж {total_floors}/{total_floors}\n"
@@ -179,7 +167,8 @@ def handle_message(message):
     else:
         bot.reply_to(message, "Пожалуйста, отправьте ссылку на объявление с easyhata.site (flats или houses)")
 
-# Запускаем Flask-сервер
+# Запускаем приложение через Gunicorn (Render автоматически это сделает)
 if __name__ == "__main__":
-    keep_alive()
-    logging.info("Bot is running with webhook mode")
+    port = int(os.getenv("PORT", 8080))
+    logging.info(f"Starting Flask app on port: {port}")
+    app.run(host='0.0.0.0', port=port)

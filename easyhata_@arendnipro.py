@@ -39,7 +39,8 @@ def webhook():
         return 'Error', 500
 
 def run():
-    port = int(os.getenv("PORT", 8080))  # Динамический порт
+    port = int(os.getenv("PORT", 8080))  # Динамический порт от Render или 8080 по умолчанию
+    logging.info(f"Starting server on port: {port}")
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
@@ -49,8 +50,8 @@ def keep_alive():
 # Настройка Telegram-бота
 bot = telebot.TeleBot(os.getenv("BOT_TOKEN"))
 
-# Удаляем вебхук перед запуском (на случай, если он был установлен ранее)
-bot.delete_webhook()
+# Временно закомментируем удаление вебхука, чтобы избежать сброса
+# bot.delete_webhook()
 
 # Функция для очистки и форматирования текста с сохранением структуры абзацев
 def clean_and_format_description(text):
